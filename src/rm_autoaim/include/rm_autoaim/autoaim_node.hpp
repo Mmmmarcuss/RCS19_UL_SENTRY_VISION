@@ -1,0 +1,191 @@
+// =============================================================================
+// autoaim_node.hpp — 自瞄全流水线节点
+// =============================================================================
+// 核心流水线:
+//   1. IMU SLERP 时间对齐
+//   2. PnP: 2D 像素 → 相机系 3D
+//   3. 坐标变换: 相机系 → 云台系 → 世界惯性系
+//   4. CSU-style armor-point Tracker: 观测更新 + 前馈预测
+//   5. Aimer: AimTarget 逆运动学 + 火控判定 + ManualCompensator
+//   6. 发布 GimbalCmd 控制指令
+// =============================================================================
+#ifndef RM_AUTOAIM__AUTOAIM_NODE_HPP_
+#define RM_AUTOAIM__AUTOAIM_NODE_HPP_
+
+#include <deque>
+#include <cstdint>
+#include <mutex>
+#include <string>
+#include <vector>
+
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/imu.hpp>
+#include <geometry_msgs/msg/point_stamped.hpp>
+#include <rm_interfaces/msg/autoaim_target_status.hpp>
+#include <rm_interfaces/msg/armor_detections.hpp>
+#include <rm_interfaces/msg/gimbal_cmd.hpp>
+#include <rm_interfaces/msg/gimbal_status.hpp>
+#include <std_msgs/msg/string.hpp>
+
+#include <opencv2/opencv.hpp>
+#include <opencv2/core/quaternion.hpp>
+
+#include "rm_autoaim/aimer.hpp"
+#include "rm_autoaim/core/armor_pose_estimator.hpp"
+#include "rm_autoaim/core/csu_armor_tracker.hpp"
+#include "rm_autoaim/core/manual_compensator.hpp"
+
+namespace rm_autoaim
+{
+
+// =============================================================================
+// IMU 数据条目 — 用于时间对齐查找
+// =============================================================================
+struct ImuStamp
+{
+  rclcpp::Time stamp;
+  cv::Quatd orientation;
+};
+
+enum class AutoaimTrackState
+{
+  LOST,
+  TRACKING,
+  TEMP_LOST
+};
+
+// =============================================================================
+// AutoaimNode — 自瞄全流水线节点
+// =============================================================================
+class AutoaimNode : public rclcpp::Node
+{
+public:
+  explicit AutoaimNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+
+private:
+  // ===========================================================================
+  // 回调
+  // ===========================================================================
+  void on_imu(const sensor_msgs::msg::Imu::ConstSharedPtr msg);
+  void on_gimbal_status(const rm_interfaces::msg::GimbalStatus::ConstSharedPtr msg);
+  void on_armors(const rm_interfaces::msg::ArmorDetections::ConstSharedPtr msg);
+
+  // ===========================================================================
+  // 核心算法模块 (空间对齐)
+  // ===========================================================================
+
+  /// IMU 时间戳包围查找
+  bool find_imu_bracket(
+    const rclcpp::Time & target_t,
+    ImuStamp & before,
+    ImuStamp & after);
+
+  /// 四元数 SLERP
+  static cv::Quatd slerp(const cv::Quatd & q0, const cv::Quatd & q1, double t);
+
+  static const char * track_state_name(AutoaimTrackState state);
+
+  void publish_fire_debug(
+    const std::string & backend,
+    const std::string & aim_source,
+    int target_id,
+    const std::string & armor_type,
+    const Eigen::Vector3d & raw_pnp_pos,
+    const Eigen::Vector3d & tracker_pos,
+    const Eigen::Vector3d & selected_pos,
+    int fire_control,
+    double target_distance,
+    double yaw_cmd,
+    double pitch_cmd,
+    double cmd_yaw_err_deg,
+    double cmd_pitch_err_deg,
+    double manual_yaw_offset,
+    double manual_pitch_offset,
+    double yaw_window,
+    double pitch_window,
+    const std::string & tracker_state,
+    const std::string & reason,
+    double age_sec);
+  void publish_target_status(
+    bool has_target,
+    bool tracking,
+    bool temp_lost,
+    bool fire_ready,
+    double target_distance,
+    double yaw_error_deg,
+    double pitch_error_deg,
+    uint8_t aim_source,
+    const std::string & reason);
+
+  // ===========================================================================
+  // 参数 — PnP / 坐标变换
+  // ===========================================================================
+  cv::Mat camera_matrix_;
+  cv::Mat dist_coeffs_;
+  cv::Matx33d R_cam_to_gimbal_;
+  cv::Vec3d   t_cam_to_gimbal_;
+
+  double armor_small_width_;
+  double armor_small_height_;
+  double armor_large_width_;
+  double armor_large_height_;
+
+  std::string world_frame_id_;
+  double imu_buffer_duration_;
+  bool pnp_refine_;
+  bool use_imu_world_transform_ = false;
+  std::string tracker_backend_ = "csu_tracker";
+  bool enable_raw_pnp_fallback_ = true;
+  bool raw_pnp_fallback_on_tracker_lost_ = true;
+  double fallback_jump_guard_m_ = 1.0;
+
+  double temp_lost_timeout_sec_ = 0.30;
+  double lost_timeout_sec_ = 0.80;
+  bool hold_last_cmd_in_temp_lost_ = true;
+  bool enable_target_status_ = true;
+
+  // ===========================================================================
+  // Tracker + Aimer
+  // ===========================================================================
+  ArmorPoseEstimator pose_estimator_;
+  CsuArmorTracker csu_tracker_;
+  CsuArmorTrackerParams csu_tracker_params_;
+  ManualCompensator manual_compensator_;
+  Aimer aimer_;
+  int tracker_frame_count_ = 0;
+  AutoaimTrackState track_state_{AutoaimTrackState::LOST};
+  rclcpp::Time last_detection_time_;
+  bool has_last_detection_{false};
+  rm_interfaces::msg::GimbalCmd last_good_cmd_;
+  bool has_last_good_cmd_{false};
+
+  // 下位机反馈状态 (由 on_gimbal_status 更新)
+  std::mutex gimbal_mutex_;
+  double current_yaw_deg_   = 0.0;  // 下位机反馈 yaw (deg)
+  double current_pitch_deg_ = 0.0;  // 下位机反馈 pitch (deg)
+  double current_bullet_speed_ = 15.0;  // 下位机反馈弹速 (m/s)
+
+  // ===========================================================================
+  // IMU 环形缓冲区
+  // ===========================================================================
+  std::deque<ImuStamp> imu_buffer_;
+  std::mutex imu_mutex_;
+  static constexpr double kDefaultImuBufferSec = 2.0;
+
+  // ===========================================================================
+  // ROS 2 接口
+  // ===========================================================================
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+  rclcpp::Subscription<rm_interfaces::msg::GimbalStatus>::SharedPtr status_sub_;
+  rclcpp::Subscription<rm_interfaces::msg::ArmorDetections>::SharedPtr armor_sub_;
+
+  rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr world_points_pub_;
+  rclcpp::Publisher<rm_interfaces::msg::GimbalCmd>::SharedPtr gimbal_cmd_pub_;
+  rclcpp::Publisher<rm_interfaces::msg::GimbalCmd>::SharedPtr gimbal_cmd_raw_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr fire_debug_pub_;
+  rclcpp::Publisher<rm_interfaces::msg::AutoaimTargetStatus>::SharedPtr target_status_pub_;
+};
+
+}  // namespace rm_autoaim
+
+#endif  // RM_AUTOAIM__AUTOAIM_NODE_HPP_

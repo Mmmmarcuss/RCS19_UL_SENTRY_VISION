@@ -1,0 +1,7 @@
+[ 20%] Building CXX object CMakeFiles/referee_check.dir/referee_check.cpp.o
+[ 40%] Building CXX object CMakeFiles/sentry_command_mux_check.dir/mnt/e/RM/RM27_UL_backup/RCS_SENTRY_VISION_20261009/src/rm_sentry_decision/src/sentry_command_mux_node.cpp.o
+[ 60%] Building CXX object CMakeFiles/referee_check.dir/mnt/e/RM/RM27_UL_backup/RCS_SENTRY_VISION_20261009/src/sentry_bt/src/referee_interface.cpp.o
+[ 80%] Linking CXX executable referee_check
+[ 80%] Built target referee_check
+[100%] Linking CXX executable sentry_command_mux_check
+[100%] Built target sentry_command_mux_check

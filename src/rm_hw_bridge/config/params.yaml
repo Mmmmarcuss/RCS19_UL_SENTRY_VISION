@@ -1,0 +1,28 @@
+# =============================================================================
+# rm_hw_bridge 默认参数
+# =============================================================================
+
+rm_hw_bridge:
+  ros__parameters:
+    # ---- 串口配置 ----
+    serial_device: "/dev/ttyUSB0"    # 串口设备路径
+    baudrate: 921600                  # Hohokam SentinelRobot COMMAND40/STATE32
+
+    # ---- 坐标系 ----
+    frame_id: "imu_link"              # IMU / JointState 的 frame_id
+
+    # ---- CRC 校验 ----
+    require_crc_check: true           # 两端严格CRC，不允许绕过
+
+    # 统一定时合成自瞄和导航，同一串口只发40字节帧
+    tx_rate_hz: 50
+    allow_control: true
+    allow_shoot: false               # 不自动启用发射
+    command_timeout_ms: 150
+    nav_timeout_ms: 250
+    feedback_timeout_ms: 300         # 下位机仅约10Hz回包
+    # ROS绝对目标角减去当前IMU角；实机核对机构纠偏正方向
+    yaw_error_sign: 1.0
+    pitch_error_sign: 1.0
+    correction_scale: 1.0
+    max_error_deg: 5.0               # 每帧输出误差限幅，不是机构总行程限位

@@ -1,0 +1,8 @@
+/mnt/e/RM/RM27_UL_backup/RCS_SENTRY_VISION_20261009/.cache/teammate_source_check/source_check.cpp: In member function ‘void firmware::XUC::Decode()’:
+/mnt/e/RM/RM27_UL_backup/RCS_SENTRY_VISION_20261009/.cache/teammate_source_check/source_check.cpp:199:68: warning: passing NULL to non-pointer argument 3 of ‘int firmware::xQueueReceive(int, uint8_t*, int)’ [-Wconversion-null]
+  199 |         pd_Rx = xQueueReceive((m_uart->UartQueueHandler), m_frame, NULL);
+      |                                                                    ^~~~
+/mnt/e/RM/RM27_UL_backup/RCS_SENTRY_VISION_20261009/.cache/teammate_source_check/source_check.cpp:164:46: note:   declared here
+  164 | int xQueueReceive(int, uint8_t* destination, int) {
+      |                                              ^~~
+PASS: 1000 upper frames accepted by actual firmware Decode; CRC/header rejection; actual firmware Encode parsed by upper; STATE32 offsets and flag bits

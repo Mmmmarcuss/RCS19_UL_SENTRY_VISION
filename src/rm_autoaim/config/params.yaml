@@ -1,0 +1,160 @@
+# =============================================================================
+# rm_autoaim 节点参数配置
+# =============================================================================
+
+rm_autoaim:
+  ros__parameters:
+
+    # ---- 相机内参矩阵 (3×3, 行优先) — 2026-04-08 物理标定 ----
+    # fx=2342.39  fy=2336.43  cx=722.79  cy=546.67
+    camera_matrix: [
+      2342.38801,    0.0,      722.7857,
+         0.0,      2336.42764, 546.67109,
+         0.0,         0.0,        1.0
+    ]
+
+    # ---- 畸变系数 [k1, k2, p1, p2, k3] — 2026-04-08 物理标定 ----
+    dist_coeffs: [-0.076970, 0.101924, 0.001169, 0.002179, 0.000000]
+
+    # ---- 相机→云台外参 ----
+    # R_cam_to_gimbal: 手眼标定结果 (TSAI, 26组, orth_err=3.25e-16)
+    # 相机系: x=右, y=下, z=前 | 云台系: x=前, y=左, z=上
+    # 对应相机安装偏角: yaw≈83° pitch≈86° roll≈-4° (从理想90°有~4°偏差)
+    # ★ 行优先 (Row-Major): 逐行填入, C++ 使用 (i,j) = arr[i*3+j] 防呆赋值
+    r_cam_to_gimbal: [
+      0.04414099384, -0.007345851179,  0.9989983039,
+      -0.9970764997,   0.06210530348,   0.04451275219,
+      -0.06237007689, -0.9980425691,   -0.004582985762
+    ]
+ 
+    # t_cam_to_gimbal: 相机在云台坐标系中的物理位置 (单位: m)
+    # 实测: 前方100mm, 左侧0mm, 上方525mm
+    t_cam_to_gimbal: [0.1, 0.0, 0.525]
+
+    # ---- 装甲板物理尺寸 (单位: m) ----
+    armor_small_width:  0.135
+    armor_small_height: 0.055
+    armor_large_width:  0.225
+    armor_large_height: 0.055
+
+    # ---- 坐标系 ----
+    world_frame_id: "gimbal_odom"
+
+    # ---- IMU 缓冲区保留时长 (秒) ----
+    imu_buffer_duration: 2.0
+
+    # ---- PnP 求解 ----
+    pnp_refine_iterative: true
+
+    # ---- 订阅话题 ----
+    imu_topic: "/imu/data"
+    gimbal_status_topic: "/gimbal_status"
+
+    # ---- 跟踪坐标系模式 ----
+    # V3 生产链在当前云台系(gimbal frame)输出 AimTarget。保留该参数只为
+    # 兼容旧 launch/调试配置，默认不要开启。
+    use_imu_world_transform: false
+
+    # ---- Tracker lifecycle ----
+    temp_lost_timeout_sec: 0.30
+    lost_timeout_sec: 0.80
+    hold_last_cmd_in_temp_lost: true
+
+    # ---- V3 tracker backend ----
+    # raw_pnp / csu_tracker
+    tracker_backend: "csu_tracker"
+    enable_raw_pnp_fallback: true
+    raw_pnp_fallback_on_tracker_lost: true
+    fallback_jump_guard_m: 1.0
+
+    # ---- ManualCompensator: distance(m) -> angle offset(rad) LUT ----
+    # ROS 2 Humble parameters are flat arrays, stored as [distance, offset, ...].
+    # Pitch LUT 是赛前生产链唯一 pitch/yaw 手动补偿入口，后续按 2m/5m 实测填写。
+    manual_compensator:
+      enabled: true
+      # 2026-05-06现场初值:
+      # - 第一组近距离联射: 1.8m附近按当前组下调2deg: 0.280rad
+      # - 第四组2.0m调试: pitch约0.230rad, yaw在原值基础上向右约2deg
+      # - 第五组2.6m调试: 在插值基础上pitch上抬约0.5deg
+      # - 第六组3.25m验收: 当前插值命中, 固化为验收点
+      # - 第二组3.5~4.0m调试: 0.111rad
+      # - 第三组4.5~4.8m调试: 0.076rad, 在0.111rad基础上抬高约2deg
+      # 后续按2m/3.5m/5m实弹落点继续细化，不要再叠加其他pitch补偿。
+      pitch_lut: [1.8, 0.280, 2.0, 0.240, 2.6, 0.191, 3.25, 0.138, 3.5, 0.121, 4.6, 0.098, 5.0, 0.083, 6.0, 0.066, 7.0, 0.048, 8.0, 0.030, 9.0, 0.012, 10.0, 0.001]
+      # yaw 正=命令更向左, 负=命令更向右。
+      # 第一组1.8m当前组实测需要向右约5deg: -0.087rad。
+      # 第四组2.0m实测还需向右约2deg: -0.040rad。
+      # 第五组2.6m实测还需向右约1deg: -0.059rad。
+      # 第六组3.25m验收: 当前插值命中, 固化为验收点。
+      # 第三组4.5~4.8m实测在-0.042rad基础上还需向右约3deg: -0.094rad。
+      yaw_lut: [1.8, -0.095, 2.0, -0.040, 2.6, -0.059, 3.25, -0.043, 3.5, -0.040, 4.6, -0.038, 5.0, -0.038, 6.0, -0.030, 7.0, -0.023, 8.0, -0.014, 9.0, -0.005, 10.0, 0.0]
+      clamp_min_distance: 0.5
+      clamp_max_distance: 10.0
+      # 现场标定用运行时微调量，可直接 ros2 param set，不需要重启。
+      # 标定完成后，把 extra_pitch_offset 合并回 pitch_lut。
+      extra_yaw_offset: 0.0
+      extra_pitch_offset: 0.0
+
+    tracker:
+      min_detect_count: 2
+      min_tracking_count_for_fire: 3
+      max_match_distance: 0.5
+      max_match_yaw_diff: 1.0
+      max_lost_time: 0.3
+      fire_max_distance: 8.0
+      default_radius: 0.26
+      min_radius: 0.12
+      max_radius: 0.40
+      q_xyz: 0.05
+      q_yaw: 0.10
+      q_radius: 0.02
+      r_xyz: 0.05
+      r_yaw: 0.15
+
+    fire:
+      allow_fire_on_raw_pnp_fallback: false
+      allow_fire_on_csu_tracker: true
+
+    # =====================================================================
+    # Aimer 参数 — AimTarget 逆运动学 + 火控
+    # =====================================================================
+
+    # ---- 时间前馈 ----
+    # V3 生产链不使用解析弹道或多项式叠加补偿。
+    # yaw/pitch 静态修正只走 manual_compensator LUT。
+    bullet_speed_default: 24.0       # 默认弹丸速度 (m/s)
+    fire_delay: 0.05                 # 系统总延迟 (s), 含图像+串口+云台
+    # yaw 常量偏置 (rad): 正=命令更向左, 负=命令更向右
+    # 若静态打点“落在目标左边”, 就填负值; 若“落在目标右边”, 就填正值
+    yaw_offset: 0.0
+    # 动态目标提前量倍率。静态 LUT 不受影响。
+    # 小陀螺弹着偏右通常是横向提前量过大，先降到0.75；偏左则调大。
+    dynamic_lead_scale: 0.75
+
+    # ---- 坐标系契约 ----
+    # 下位机反馈 gimbal_pitch 为“抬头为负, 低头为正”。
+    # Aimer 的几何解算同样输出“目标在上方为负, 目标在下方为正”，所以生产链必须 false。
+    # 设为 true 会在目标位于画面上方时把上抬命令翻成低头，造成向下脱锁再复锁。
+    pitch_invert: false
+
+    # ROS GimbalCmd保持绝对目标角；rm_hw_bridge结合STATE32姿态转换为COMMAND40纠偏量。
+    # 必须保持false，避免通信桥对已经是相对角的结果再次减去当前姿态。
+    output_relative_command: false
+
+    # ---- 火控: 炮管对齐容差 ----
+    # 解算角度与下位机反馈角度的差值阈值 (rad)
+    # 0.03 rad ≈ 1.7°
+    fire_tolerance: 0.07
+
+    # ---- Fire window ----
+    use_dynamic_fire_window: true
+    shooting_range_width: 0.135
+    shooting_range_height: 0.080
+    min_fire_window_deg: 1.3
+    max_fire_window_deg: 4.0
+
+    # ---- 火控: 收敛/距离保护 ----
+    # Tracker 最少收敛帧数 (防止初始发散时开火)
+    fire_min_frames: 0
+    # 最大开火距离 (m)
+    fire_max_distance: 10.0

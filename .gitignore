@@ -1,0 +1,26 @@
+# Colcon build artifacts
+build/
+install/
+log/
+
+# Local communication validation builds and pre-change backups
+.cache/communication_*/
+.cache/teammate_protocol_tests/
+.cache/teammate_source_check/
+
+# Third-party source (previously symlinks, now local copies)
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.pyc
+
+# Local runtime data (not part of the published source)
+/.cache/
+/Log/
+/ystemctl status robomaster.service

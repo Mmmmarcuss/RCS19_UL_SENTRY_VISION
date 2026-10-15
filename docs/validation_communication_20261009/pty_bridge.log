@@ -1,0 +1,6 @@
+[INFO] [1791553367.871708034] [rm_hw_bridge]: Serial opened: /dev/pts/2 @ 921600 8N1
+[INFO] [1791553367.875380231] [rm_hw_bridge]: COMMAND40/STATE32, TX=50Hz, control=1, shoot=1
+[INFO] [1791553368.320934288] [rm_hw_bridge]: [LINK] tx_frames=22 rx_total=65522 rx_count=65522 delta_total=0 delta_valid=0
+[INFO] [1791553369.351405538] [rm_hw_bridge]: [LINK] tx_frames=74 rx_total=38 rx_count=38 delta_total=5 delta_valid=5
+[INFO] [1791553370.390328302] [rm_hw_bridge]: [LINK] tx_frames=127 rx_total=90 rx_count=90 delta_total=5 delta_valid=5
+[INFO] [1791553372.815529421] [rclcpp]: signal_handler(SIGINT/SIGTERM)
