@@ -502,6 +502,10 @@ void AutoaimNode::publish_target_status(
 // =============================================================================
 void AutoaimNode::on_imu(const sensor_msgs::msg::Imu::ConstSharedPtr msg)
 {
+  const auto& q = msg->orientation;
+  if (msg->orientation_covariance[0] < 0 || !std::isfinite(q.w) ||
+      !std::isfinite(q.x) || !std::isfinite(q.y) || !std::isfinite(q.z) ||
+      q.w*q.w + q.x*q.x + q.y*q.y + q.z*q.z < 1e-12) return;
   ImuStamp entry;
   entry.stamp = rclcpp::Time(msg->header.stamp);
   entry.orientation = cv::Quatd(
@@ -529,6 +533,8 @@ void AutoaimNode::on_imu(const sensor_msgs::msg::Imu::ConstSharedPtr msg)
 void AutoaimNode::on_gimbal_status(const GimbalStatus::ConstSharedPtr msg)
 {
   std::lock_guard<std::mutex> lock(gimbal_mutex_);
+  if (!msg->pose_valid || !std::isfinite(msg->gimbal_yaw) ||
+      !std::isfinite(msg->gimbal_pitch)) return;
   current_yaw_deg_       = msg->gimbal_yaw;
   current_pitch_deg_     = msg->gimbal_pitch;
   current_bullet_speed_  = msg->bullet_speed;

@@ -1,8 +1,8 @@
 # RCS19_UL_SENTRY_VISION
 
-基于 [RCS-SENTRY/RCS_SENTRY_VISION2026](https://github.com/RCS-SENTRY/RCS_SENTRY_VISION2026) 的 ROS 2 哨兵上位机工程，保留原项目及第三方组件的来源说明。本仓库以本地 `RCS_SENTRY_VISION_20261009` 建立全新提交历史；当前通信为 COMMAND40/STATE32，尚未适配 2026-10-15 下位机 V2。
+基于 [RCS-SENTRY/RCS_SENTRY_VISION2026](https://github.com/RCS-SENTRY/RCS_SENTRY_VISION2026) 的 ROS 2 哨兵上位机工程，保留原项目及第三方组件的来源说明。本仓库以本地 `RCS_SENTRY_VISION_20261009` 建立全新提交历史。
 
-2026-10-09 已对齐 Hohokam SentinelRobot 的 COMMAND40/STATE32（921600、CRC16）。编译、链路验证和功能限制见 [通信对齐说明](docs/communication_alignment_20261009.md)。当前下位机不回传完整裁判状态，以下比赛决策和发射流程需相应反馈支持；桥接默认禁火。
+通信已改为 Hohokam SentinelRobot `8caff9c` 的 **V2（921600、CRC16）**，默认只接收，云台、导航、摩擦轮和发射均未启用。当前下位机的时间与轴向有效标志尚未放行，上位机据此阻止云台控制。使用方法、验证及下位机待修项见 [V2 通信对齐说明](docs/communication_alignment_v2.md)。裁判状态、敌方颜色、弹速及实际底盘速度仍未回传，以下比赛流程需相应反馈支持。
 
 特别致谢：
 https://github.com/SMBU-PolarBear-Robotics-Team/pb2025_sentry_nav

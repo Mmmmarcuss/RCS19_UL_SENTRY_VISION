@@ -14,6 +14,7 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def _truthy(name):
@@ -92,6 +93,9 @@ def generate_launch_description():
         DeclareLaunchArgument("use_serial", default_value="true"),
         DeclareLaunchArgument("serial_device", default_value="/dev/rm_serial"),
         DeclareLaunchArgument("baudrate", default_value="921600"),
+        *[DeclareLaunchArgument(name, default_value=default) for name, default in (
+            ("read_only", "true"), ("allow_control", "false"), ("allow_nav", "false"),
+            ("allow_friction", "false"), ("allow_shoot", "false"))],
         DeclareLaunchArgument("navigation_only", default_value="false"),
         DeclareLaunchArgument("vision_only", default_value="false"),
         DeclareLaunchArgument("debug_no_serial", default_value="false"),
@@ -203,6 +207,9 @@ def generate_launch_description():
                 {
                     "serial_device": LaunchConfiguration("serial_device"),
                     "baudrate": LaunchConfiguration("baudrate"),
+                    **{name: ParameterValue(LaunchConfiguration(name), value_type=bool)
+                       for name in ("read_only", "allow_control", "allow_nav",
+                                    "allow_friction", "allow_shoot")},
                 },
             ],
             condition=IfCondition(serial_enabled),

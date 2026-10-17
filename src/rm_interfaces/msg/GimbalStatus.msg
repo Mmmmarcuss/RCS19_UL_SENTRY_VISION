@@ -1,7 +1,7 @@
 # =============================================================================
 # GimbalStatus.msg — 下位机 → 上位机 全状态反馈
 # =============================================================================
-# rm_hw_bridge 从串口解析 NucToVisionFrame 后发布此消息。
+# rm_hw_bridge 将已确认轴向的 V2 云台姿态转换为此兼容接口。
 # =============================================================================
 
 std_msgs/Header header
@@ -90,7 +90,8 @@ bool referee_data_valid true
 bool mode_valid true
 bool ballistic_data_valid true
 bool rates_valid true
-# Teammate STATE32 only carries pose, enemy color and receive counters.
+# V2 不提供颜色、复位跟踪和旧版接收计数；这些字段保留供兼容发布者使用。
+bool pose_valid true        # 旧发布者兼容默认值；V2 桥接在失效/未核验/超时时置 false
 uint8 detect_color 255      # 0=red target, 1=blue target, 255=not supplied
 bool reset_tracker
 uint16 rx_total

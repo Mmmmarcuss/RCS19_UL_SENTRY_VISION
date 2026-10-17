@@ -1,9 +1,0 @@
-Arguments (pass arguments as '<name>:=<value>'):
-
-    'serial_device':
-        Serial port device path
-        (default: '/dev/ttyUSB0')
-
-    'baudrate':
-        Serial baudrate
-        (default: '921600')

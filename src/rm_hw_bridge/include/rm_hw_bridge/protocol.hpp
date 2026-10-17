@@ -1,113 +1,118 @@
 #ifndef RM_HW_BRIDGE__PROTOCOL_HPP_
 #define RM_HW_BRIDGE__PROTOCOL_HPP_
+#include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <vector>
 #include "rm_hw_bridge/crc16.hpp"
 
 namespace rm_hw_bridge {
-// Hohokamk/Sentinel_robot 6a3fc9ea454d: COMMAND40 / STATE32.
-#pragma pack(push, 1)
-struct VisionToNucFrame {
-  uint8_t header = 0xA5;
-  float pitch = 0, yaw = 0;             // Current pose, degrees.
-  float yaw_diff = 0, pitch_diff = 0;   // Remaining error, degrees.
-  float distance = 0;
-  uint8_t fireadvice = 0, reserved[3]{};
-  float v_y = 0;
-  uint8_t reserved2 = 0;
-  float speed_x = 0, speed_y = 0;       // Body-frame m/s.
-  uint16_t checksum = 0;
-};
-struct NucToVisionFrame {
-  uint8_t header = 0x5A, flags = 0;
-  float roll = 0, pitch = 0, yaw = 0;   // CH010 HI91 raw degrees (firmware does not convert).
-  float aim_x = 0, aim_y = 0, aim_z = 0;
-  uint16_t rx_total = 0, rx_count = 0, checksum = 0;
-};
-#pragma pack(pop)
-constexpr size_t VISION_TX_FRAME_SIZE = 40, VISION_RX_FRAME_SIZE = 32;
-static_assert(sizeof(float) == 4 && std::numeric_limits<float>::is_iec559);
-static_assert(sizeof(VisionToNucFrame) == VISION_TX_FRAME_SIZE);
-static_assert(sizeof(NucToVisionFrame) == VISION_RX_FRAME_SIZE);
-#define RM_OFFSET(T, F, N) static_assert(offsetof(T, F) == N)
-RM_OFFSET(VisionToNucFrame, header, 0);
-RM_OFFSET(VisionToNucFrame, pitch, 1); RM_OFFSET(VisionToNucFrame, yaw, 5);
-RM_OFFSET(VisionToNucFrame, yaw_diff, 9); RM_OFFSET(VisionToNucFrame, pitch_diff, 13);
-RM_OFFSET(VisionToNucFrame, distance, 17); RM_OFFSET(VisionToNucFrame, fireadvice, 21);
-RM_OFFSET(VisionToNucFrame, reserved, 22); RM_OFFSET(VisionToNucFrame, v_y, 25);
-RM_OFFSET(VisionToNucFrame, reserved2, 29); RM_OFFSET(VisionToNucFrame, speed_x, 30);
-RM_OFFSET(VisionToNucFrame, speed_y, 34); RM_OFFSET(VisionToNucFrame, checksum, 38);
-RM_OFFSET(NucToVisionFrame, flags, 1); RM_OFFSET(NucToVisionFrame, roll, 2);
-RM_OFFSET(NucToVisionFrame, pitch, 6); RM_OFFSET(NucToVisionFrame, yaw, 10);
-RM_OFFSET(NucToVisionFrame, aim_x, 14); RM_OFFSET(NucToVisionFrame, aim_y, 18);
-RM_OFFSET(NucToVisionFrame, aim_z, 22); RM_OFFSET(NucToVisionFrame, rx_total, 26);
-RM_OFFSET(NucToVisionFrame, rx_count, 28); RM_OFFSET(NucToVisionFrame, checksum, 30);
-#undef RM_OFFSET
-inline uint16_t read_u16(const uint8_t* p) {
-  return uint16_t(p[0]) | (uint16_t(p[1]) << 8);
+// Hohokam SentinelRobot 8caff9c: V2, little endian, radians, CRC16/MCRF4XX.
+constexpr uint8_t GIMBAL_IMU=0x01, CHASSIS_IMU=0x02, AIM_COMMAND=0x10,
+                  NAV_COMMAND=0x11, LINK_STATUS=0x81;
+constexpr uint8_t ORIENTATION_VALID=1, GYRO_VALID=2, SAMPLE_TIME_VALID=4, AXES_VERIFIED=8;
+constexpr size_t HEADER_SIZE=12, MAX_PAYLOAD=128, MAX_FRAME=142;
+static_assert(sizeof(float)==4 && std::numeric_limits<float>::is_iec559);
+inline uint16_t read_u16(const uint8_t* p) { return uint16_t(p[0]) | uint16_t(p[1])<<8; }
+inline uint32_t read_u32(const uint8_t* p) {
+  return uint32_t(p[0]) | uint32_t(p[1])<<8 | uint32_t(p[2])<<16 | uint32_t(p[3])<<24;
 }
-inline void write_u16(uint8_t* p, uint16_t value) {
-  p[0] = uint8_t(value); p[1] = uint8_t(value >> 8);
+inline void write_u16(uint8_t* p, uint16_t v) { p[0]=uint8_t(v); p[1]=uint8_t(v>>8); }
+inline void write_u32(uint8_t* p, uint32_t v) {
+  for (unsigned i=0;i<4;++i) p[i]=uint8_t(v>>(8*i));
 }
 inline float read_float(const uint8_t* p) {
-  const uint32_t bits = uint32_t(p[0]) | (uint32_t(p[1]) << 8) |
-    (uint32_t(p[2]) << 16) | (uint32_t(p[3]) << 24);
-  float result; std::memcpy(&result, &bits, 4); return result;
+  uint32_t bits=read_u32(p); float v; std::memcpy(&v,&bits,4); return v;
 }
-inline void write_float(uint8_t* p, float value) {
-  uint32_t bits; std::memcpy(&bits, &value, 4);
-  for (unsigned i = 0; i < 4; ++i) p[i] = uint8_t(bits >> (8 * i));
+inline void write_float(uint8_t* p, float v) {
+  uint32_t bits; std::memcpy(&bits,&v,4); write_u32(p,bits);
 }
-inline std::array<uint8_t, VISION_TX_FRAME_SIZE> encode(const VisionToNucFrame& c) {
-  std::array<uint8_t, VISION_TX_FRAME_SIZE> b{};
-  b[0] = 0xA5;
-  write_float(b.data()+1, c.pitch); write_float(b.data()+5, c.yaw);
-  write_float(b.data()+9, c.yaw_diff); write_float(b.data()+13, c.pitch_diff);
-  write_float(b.data()+17, c.distance); b[21] = c.fireadvice & 1;
-  write_float(b.data()+25, c.v_y);
-  write_float(b.data()+30, c.speed_x); write_float(b.data()+34, c.speed_y);
-  write_u16(b.data()+38, compute_crc16(b.data(), 38));
-  return b;
+inline bool newer(uint16_t a, uint16_t b) { const auto d=uint16_t(a-b); return d!=0 && d<32768; }
+struct Frame {
+  uint8_t type=0;
+  uint16_t sequence=0;
+  uint32_t boot_id=0;
+  std::vector<uint8_t> payload;
+};
+inline std::vector<uint8_t> encode(const Frame& f) {
+  if (f.payload.size()>MAX_PAYLOAD) return {};
+  std::vector<uint8_t> b(14+f.payload.size(),0);
+  b[0]=0xA6; b[1]=0x6A; b[2]=2; b[3]=f.type;
+  write_u16(b.data()+4,uint16_t(f.payload.size())); write_u16(b.data()+6,f.sequence);
+  write_u32(b.data()+8,f.boot_id);
+  std::copy(f.payload.begin(),f.payload.end(),b.begin()+12);
+  write_u16(b.data()+b.size()-2,compute_crc16(b.data(),b.size()-2)); return b;
 }
-inline bool decode(const uint8_t* b, size_t n, NucToVisionFrame& s) {
-  if (!b || n != VISION_RX_FRAME_SIZE || b[0] != 0x5A || !check_crc16(b, n)) return false;
-  NucToVisionFrame value;
-  value.flags = b[1]; value.roll = read_float(b+2);
-  value.pitch = read_float(b+6); value.yaw = read_float(b+10);
-  value.aim_x = read_float(b+14); value.aim_y = read_float(b+18);
-  value.aim_z = read_float(b+22); value.rx_total = read_u16(b+26);
-  value.rx_count = read_u16(b+28); value.checksum = read_u16(b+30);
-  if (!std::isfinite(value.roll) || !std::isfinite(value.pitch) ||
-      !std::isfinite(value.yaw)) return false;
-  s = value; return true;
+struct ImuSample {
+  uint8_t sensor_id=0, flags=0;
+  uint16_t epoch=0, sequence=0;
+  uint32_t sample_time_us=0, boot_id=0;
+  float roll=0,pitch=0,yaw=0,gx=0,gy=0,gz=0;
+  bool orientation_valid() const {
+    return (flags&ORIENTATION_VALID) && std::isfinite(roll) && std::isfinite(pitch) && std::isfinite(yaw);
+  }
+  bool gyro_valid() const {
+    return sensor_id==1 && (flags&GYRO_VALID) && std::isfinite(gx) && std::isfinite(gy) && std::isfinite(gz);
+  }
+  bool control_valid() const {
+    return orientation_valid() && (flags&SAMPLE_TIME_VALID) && (flags&AXES_VERIFIED);
+  }
+};
+inline bool decode_imu(const Frame& f, ImuSample& s) {
+  const bool g=f.type==GIMBAL_IMU;
+  if ((!g && f.type!=CHASSIS_IMU) || f.payload.size()!=(g?32u:20u)) return false;
+  const auto* p=f.payload.data();
+  if (p[0]!=(g?1:2) || (p[1]&0xF0) || (!g && (p[1]&GYRO_VALID))) return false;
+  s={}; s.sensor_id=p[0]; s.flags=p[1]; s.epoch=read_u16(p+2);
+  s.sample_time_us=read_u32(p+4); s.sequence=f.sequence; s.boot_id=f.boot_id;
+  s.roll=read_float(p+8); s.pitch=read_float(p+12); s.yaw=read_float(p+16);
+  if (g) { s.gx=read_float(p+20); s.gy=read_float(p+24); s.gz=read_float(p+28); }
+  // Invalid measurements reach the health layer to revoke previous validity.
+  return true;
 }
+struct LinkStatus {
+  uint16_t last_aim_seq=0,aim_age_ms=0xFFFF;
+  uint8_t state=0,last_reject=0;
+};
+inline bool decode_link(const Frame& f, LinkStatus& s) {
+  if (f.type!=LINK_STATUS || f.payload.size()!=12) return false;
+  const auto* p=f.payload.data(); s.last_aim_seq=read_u16(p+4);
+  s.state=p[6]; s.last_reject=p[7]; s.aim_age_ms=read_u16(p+8); return true;
+}
+// Bounded stream parser; a stalled partial frame expires on monotonic time.
 class StateParser {
  public:
-  template<class Consumer> void feed(const uint8_t* data, size_t n, Consumer consume) {
-    for (size_t i = 0; i < n; ++i) {
-      if (!used_ && data[i] != 0x5A) continue;
-      bytes_[used_++] = data[i];
-      if (used_ < bytes_.size()) continue;
-      NucToVisionFrame state;
-      if (decode(bytes_.data(), bytes_.size(), state)) {
-        ++valid_frames; consume(state); used_ = 0;
-      } else {
-        ++rejected_frames;
-        size_t next = 1;
-        while (next < used_ && bytes_[next] != 0x5A) ++next;
-        used_ -= next;
-        std::memmove(bytes_.data(), bytes_.data()+next, used_);
+  template<class Consume> void feed(const uint8_t* data,size_t n,Consume consume,uint64_t now_ms=0) {
+    if (!data && n) return;
+    if (!buffer_.empty() && now_ms>last_ms_ && now_ms-last_ms_>100) buffer_.clear();
+    last_ms_=now_ms;
+    for (size_t i=0;i<n;++i) {
+      buffer_.push_back(data[i]);
+      while (buffer_.size()>=2) {
+        if (buffer_[0]!=0xA6 || buffer_[1]!=0x6A) { discard(); continue; }
+        if (buffer_.size()<HEADER_SIZE) break;
+        const size_t plen=read_u16(buffer_.data()+4);
+        if (buffer_[2]!=2 || plen>MAX_PAYLOAD) { ++rejected_; discard(); continue; }
+        const size_t total=14+plen;
+        if (buffer_.size()<total) break;
+        if (read_u16(buffer_.data()+total-2)!=compute_crc16(buffer_.data(),total-2)) {
+          ++rejected_; discard(); continue;
+        }
+        Frame f{buffer_[3],read_u16(buffer_.data()+6),read_u32(buffer_.data()+8),
+                std::vector<uint8_t>(buffer_.begin()+12,buffer_.begin()+total-2)};
+        buffer_.erase(buffer_.begin(),buffer_.begin()+total); ++valid_; consume(f);
       }
     }
   }
-  uint64_t valid_frames = 0, rejected_frames = 0;
+  uint64_t valid_frames() const { return valid_; }
+  uint64_t rejected_frames() const { return rejected_; }
  private:
-  std::array<uint8_t, VISION_RX_FRAME_SIZE> bytes_{};
-  size_t used_ = 0;
+  void discard() { buffer_.erase(buffer_.begin()); }
+  std::vector<uint8_t> buffer_;
+  uint64_t last_ms_=0,valid_=0,rejected_=0;
 };
 } // namespace rm_hw_bridge
 #endif

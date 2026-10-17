@@ -10,7 +10,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_compile_options(-Wall -Wextra -Wpedantic)
 
-option(PROTOCOL_TESTS_ONLY "Build COMMAND40/STATE32 tests without ROS" OFF)
+option(PROTOCOL_TESTS_ONLY "Build V2 protocol tests without ROS" OFF)
 if(PROTOCOL_TESTS_ONLY)
   enable_testing()
   add_executable(teammate_protocol_test tests/teammate_protocol_test.cpp)
@@ -24,6 +24,7 @@ endif()
 # ============================================================================
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rcl_interfaces REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(rm_interfaces REQUIRED)
@@ -42,6 +43,7 @@ add_executable(hw_bridge_node
 
 ament_target_dependencies(hw_bridge_node
   rclcpp
+  rcl_interfaces
   sensor_msgs
   std_msgs
   rm_interfaces

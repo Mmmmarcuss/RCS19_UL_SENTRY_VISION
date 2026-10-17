@@ -135,7 +135,8 @@ public:
             [this](rm_interfaces::msg::GimbalStatus::SharedPtr msg) {
                 last_status_ = *msg;
                 last_status_time_ = now();
-                has_status_ = true;
+                has_status_ = msg->pose_valid && std::isfinite(msg->gimbal_yaw) &&
+                              std::isfinite(msg->gimbal_pitch);
             });
         main_lidar_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
             main_lidar_heartbeat_topic_, rclcpp::SensorDataQoS(),

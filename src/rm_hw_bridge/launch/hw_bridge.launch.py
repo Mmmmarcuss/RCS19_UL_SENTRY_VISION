@@ -3,6 +3,7 @@ hw_bridge.launch.py — 启动 rm_hw_bridge 节点
 """
 from launch import LaunchDescription
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch.substitutions import LaunchConfiguration
 from launch.actions import DeclareLaunchArgument
 import os
@@ -22,6 +23,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'baudrate', default_value='921600',
             description='Serial baudrate'),
+        *[DeclareLaunchArgument(name, default_value=default) for name, default in (
+            ('read_only', 'true'), ('allow_control', 'false'), ('allow_nav', 'false'),
+            ('allow_friction', 'false'), ('allow_shoot', 'false'))],
 
         # ---- 节点 ----
         Node(
@@ -34,6 +38,9 @@ def generate_launch_description():
                 {
                     'serial_device': LaunchConfiguration('serial_device'),
                     'baudrate': LaunchConfiguration('baudrate'),
+                    **{name: ParameterValue(LaunchConfiguration(name), value_type=bool)
+                       for name in ('read_only', 'allow_control', 'allow_nav',
+                                    'allow_friction', 'allow_shoot')},
                 },
             ],
             remappings=[

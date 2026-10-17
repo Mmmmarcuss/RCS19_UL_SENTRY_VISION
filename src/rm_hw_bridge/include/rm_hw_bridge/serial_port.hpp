@@ -20,8 +20,8 @@ class SerialPort {
  public:
   using RxCallback = std::function<void(const uint8_t*, size_t)>;
   SerialPort(const std::string& device, int baud, RxCallback callback,
-             const rclcpp::Logger& logger = rclcpp::get_logger("serial_port"))
-    : device_(device), baud_(baud), callback_(std::move(callback)), logger_(logger) {
+             const rclcpp::Logger& logger = rclcpp::get_logger("serial_port"), bool read_only = true)
+    : device_(device), baud_(baud), read_only_(read_only), callback_(std::move(callback)), logger_(logger) {
     try_open();
     daemon_ = std::thread([this] {
       while (!quit_) {
@@ -40,6 +40,7 @@ class SerialPort {
   bool is_ok() const { return ok_; }
   // Complete one frame under one lock; never silently truncate a nonblocking write.
   bool write(const uint8_t* data, size_t size) {
+    if (read_only_) return false;
     std::lock_guard<std::mutex> lock(io_mutex_);
     if (fd_ < 0 || !ok_) return false;
     const auto deadline = std::chrono::steady_clock::now()+std::chrono::milliseconds(20);
@@ -76,7 +77,7 @@ class SerialPort {
   void try_open() {
     try {
       const speed_t speed = to_speed(baud_);
-      int candidate = ::open(device_.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
+      int candidate = ::open(device_.c_str(), (read_only_ ? O_RDONLY : O_RDWR) | O_NOCTTY | O_NONBLOCK);
       if (candidate < 0) throw std::runtime_error("Cannot open " + device_);
       termios tty{};
       if (tcgetattr(candidate, &tty) != 0) {
@@ -89,7 +90,7 @@ class SerialPort {
       if (tcsetattr(candidate, TCSANOW, &tty) != 0) {
         ::close(candidate); throw std::runtime_error("tcsetattr failed");
       }
-      tcflush(candidate, TCIOFLUSH);
+      tcflush(candidate, TCIFLUSH);
       { std::lock_guard<std::mutex> lock(io_mutex_); fd_ = candidate; }
       ok_ = true;
       reader_ = std::thread([this, candidate] {
@@ -120,6 +121,7 @@ class SerialPort {
   }
   std::string device_;
   int baud_, fd_ = -1;
+  const bool read_only_;
   std::atomic<bool> ok_{false}, quit_{false};
   RxCallback callback_;
   rclcpp::Logger logger_;

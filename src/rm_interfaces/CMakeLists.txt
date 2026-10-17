@@ -9,6 +9,7 @@ find_package(geometry_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/GimbalCmd.msg"
   "msg/GimbalStatus.msg"
+  "msg/ImuTelemetry.msg"
   "msg/NavCmd.msg"
   "msg/ArmorDetection.msg"
   "msg/ArmorDetections.msg"
